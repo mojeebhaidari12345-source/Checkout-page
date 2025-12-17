@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Checkout Page</title>
+<style>
+body { font-family: Arial, sans-serif; background: #f7f7f7; display: flex; justify-content: center; align-items: center; height: 100vh; margin:0; }
+.checkout-container { background: #fff; padding: 30px; border-radius: 12px; box-shadow: 0 5px 20px rgba(0,0,0,0.1); max-width: 400px; width: 100%; }
+h2 { text-align: center; margin-bottom: 20px; color:#333; }
+input { width: 100%; padding: 12px; margin: 10px 0; border-radius: 6px; border: 1px solid #ccc; font-size: 16px; }
+button { width: 100%; padding: 12px; border: none; background: #4CAF50; color: white; font-size: 16px; border-radius: 6px; cursor: pointer; margin-top: 10px; }
+button:hover { background: #45a049; }
+.payment-option { margin: 10px 0; cursor: pointer; }
+.success { text-align: center; color: green; font-weight: bold; margin-top: 15px; }
+</style>
+
+<script src="https://cdn.jsdelivr.net/npm/emailjs-com@3/dist/email.min.js"></script>
+<script>
+(function(){emailjs.init("YOUR_EMAILJS_USER_ID");})(); // Replace with your EmailJS User ID
+</script>
+</head>
+<body>
+
+<div class="checkout-container">
+<h2>Checkout - $150</h2>
+<input type="text" id="name" placeholder="Full Name" required>
+<input type="email" id="email" placeholder="Email" required>
+<input type="tel" id="phone" placeholder="Phone Number" required>
+
+<div class="payment-option">
+<button onclick="payWithCrypto()">Pay with Crypto</button>
+</div>
+<div class="payment-option">
+<button onclick="payWithCard()">Pay with Card</button>
+</div>
+
+<div id="message" class="success"></div>
+</div>
+
+<script>
+const cryptoAPIKey = "XSBazpys0ML5VGhGvBNbnK/oYcgDKK6pFJx9I8JZRrG4XVKZGgggw5wnEPBWgXpU";
+const cardAPIKey = "0N8HPDH-H9G48VZ-MXASY1H-5BHXK0V";
+const amount = 150;
+const redirectURL = "https://t.me/YourTelegramUsername"; // Replace with your Telegram link
+
+// Send confirmation email
+function sendConfirmationEmail(name,email){
+    emailjs.send("YOUR_EMAILJS_SERVICE_ID","YOUR_EMAILJS_TEMPLATE_ID",{
+        to_name: name,
+        to_email: email,
+        amount: "$"+amount
+    })
+    .then(()=>console.log("Email sent"))
+    .catch(err=>console.error("Email error:",err));
+}
+
+// Check payment status (polling)
+function verifyPayment(payment_id, type, name, email){
+    let apiURL = type==="crypto" ? "https://api.crypto-payments.com/status/"+payment_id : "https://api.card-payments.com/status/"+payment_id;
+    
+    const checkInterval = setInterval(()=>{
+        fetch(apiURL, { headers: { "Authorization": `Bearer ${type==="crypto"?cryptoAPIKey:cardAPIKey}` } })
+        .then(res=>res.json())
+        .then(data=>{
+            if(data.status === "success"){
+                clearInterval(checkInterval);
+                document.getElementById('message').innerText = "Payment Successful! Redirecting...";
+                sendConfirmationEmail(name,email);
+                setTimeout(()=>{window.location.href = redirectURL;},3000);
+            }
+            else if(data.status === "failed"){
+                clearInterval(checkInterval);
+                document.getElementById('message').innerText = "Payment failed. Please try again.";
+            }
+        })
+        .catch(err=>{
+            console.error("Error verifying payment:",err);
+        });
+    },3000); // Check every 3 seconds
+}
+
+// Initiate crypto payment
+function payWithCrypto(){
+    const name = document.getElementById('name').value;
+    const email = document.getElementById('email').value;
+    const phone = document.getElementById('phone').value;
+    if(!name||!email||!phone){alert("Please fill all fields.");return;}
+
+    fetch("https://api.crypto-payments.com/initiate",{
+        method:"POST",
+        headers:{"Content-Type":"application/json","Authorization":`Bearer ${cryptoAPIKey}`},
+        body:JSON.stringify({amount, currency:"USD", customer:{name,email,phone}})
+    })
+    .then(res=>res.json())
+    .then(data=>{
+        if(data.payment_id && data.payment_url){
+            window.open(data.payment_url,"_blank");
+            verifyPayment(data.payment_id,"crypto",name,email);
+        } else {
+            alert("Crypto payment failed. Try card.");
+        }
+    })
+    .catch(err=>alert("Error initiating crypto payment."));
+}
+
+// Initiate card payment
+function payWithCard(){
+    const name = document.getElementById('name').value;
+    const email = document.getElementById('email').value;
+    const phone = document.getElementById('phone').value;
+    if(!name||!email||!phone){alert("Please fill all fields.");return;}
+
+    fetch("https://api.card-payments.com/initiate",{
+        method:"POST",
+        headers:{"Content-Type":"application/json","Authorization":`Bearer ${cardAPIKey}`},
+        body:JSON.stringify({amount, currency:"USD", customer:{name,email,phone}})
+    })
+    .then(res=>res.json())
+    .then(data=>{
+        if(data.payment_id && data.payment_url){
+            window.open(data.payment_url,"_blank");
+            verifyPayment(data.payment_id,"card",name,email);
+        } else {
+            alert("Card payment failed.");
+        }
+    })
+    .catch(err=>alert("Error initiating card payment."));
+}
+</script>
+</body>
+</html>
